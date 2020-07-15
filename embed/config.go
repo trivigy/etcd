@@ -26,6 +26,8 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/multierr"
+
 	"go.etcd.io/etcd/v3/etcdserver"
 	"go.etcd.io/etcd/v3/etcdserver/api/v3compactor"
 	"go.etcd.io/etcd/v3/pkg/flags"
@@ -274,7 +276,7 @@ type Config struct {
 	AuthToken  string `json:"auth-token"`
 	BcryptCost uint   `json:"bcrypt-cost"`
 
-	//The AuthTokenTTL in seconds of the simple token
+	// The AuthTokenTTL in seconds of the simple token
 	AuthTokenTTL uint `json:"auth-token-ttl"`
 
 	ExperimentalInitialCorruptCheck bool          `json:"experimental-initial-corrupt-check"`
@@ -611,7 +613,7 @@ func (cfg *Config) PeerURLsMapAndToken(which string) (urlsmap types.URLsMap, tok
 	case cfg.DNSCluster != "":
 		clusterStrs, cerr := cfg.GetDNSClusterNames()
 		lg := cfg.logger
-		if cerr != nil {
+		if len(clusterStrs) == 0 && cerr != nil {
 			lg.Warn("failed to resolve during SRV discovery", zap.Error(cerr))
 			return nil, "", cerr
 		}
@@ -669,7 +671,7 @@ func (cfg *Config) GetDNSClusterNames() ([]string, error) {
 	)
 
 	defaultHTTPClusterStrs, httpCerr := srv.GetCluster("http", "etcd-server"+serviceNameSuffix, cfg.Name, cfg.DNSCluster, cfg.APUrls)
-	if httpCerr != nil {
+	if httpCerr == nil {
 		clusterStrs = append(clusterStrs, defaultHTTPClusterStrs...)
 	}
 	lg.Info(
@@ -683,7 +685,7 @@ func (cfg *Config) GetDNSClusterNames() ([]string, error) {
 		zap.Error(httpCerr),
 	)
 
-	return clusterStrs, cerr
+	return clusterStrs, multierr.Combine(cerr, httpCerr)
 }
 
 func (cfg Config) InitialClusterFromName(name string) (ret string) {
